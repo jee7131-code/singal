@@ -26,10 +26,10 @@ try:
     header_row = df_raw.iloc[header_row_idx]
     people = [str(val).strip() for val in header_row.iloc[1:].dropna().values if str(val).strip()]
     
-    st.info("💡 선생님 개인 일정 또는 전체 스케줄을 선택하여 확인할 수 있습니다.")
+    st.info("💡 개인 일정, 전체 스케줄 또는 특정 시간대의 일정을 확인할 수 있습니다.")
     
-    # 보기 모드 리스트에 '전체 스케줄 보기' 추가
-    view_options = ["🌟 전체 스케줄 보기"] + people
+    # 보기 모드 리스트에 '특정 시간대 스케줄 보기' 추가
+    view_options = ["🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기"] + people
     
     # 모바일 터치용 선택 드롭다운
     selected_option = st.selectbox("👀 무엇을 확인하시겠어요?", view_options)
@@ -41,7 +41,6 @@ try:
         all_data = []
         current_day = "DAY1"
         
-        # 전체 데이터 파싱
         for idx in range(header_row_idx + 1, len(df_raw)):
             row = df_raw.iloc[idx]
             time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
@@ -62,7 +61,6 @@ try:
                 row_dict[person] = task_val
                 if task_val: has_task = True
                 
-            # 시간이나 업무 중 하나라도 있는 행만 추가
             if time_val or has_task:
                 all_data.append(row_dict)
                 
@@ -74,9 +72,64 @@ try:
             for i, day in enumerate(days):
                 with tabs[i]:
                     day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
-                    # use_container_width=False로 두어 열이 많을 때 좌우 스크롤이 자연스럽게 되도록 함
                     st.dataframe(day_df, hide_index=True, use_container_width=False)
                     
+    elif selected_option == "🕒 특정 시간대 스케줄 보기":
+        st.subheader("🕒 시간대별 전체 업무 확인")
+        
+        time_data = {}
+        current_day = "DAY1"
+        
+        # 시간대별 데이터 파싱
+        for idx in range(header_row_idx + 1, len(df_raw)):
+            row = df_raw.iloc[idx]
+            time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+            
+            if "DAY" in time_val.upper():
+                current_day = time_val
+                continue
+                
+            if time_val.lower() in ["nan", "none", ""]: 
+                continue
+                
+            tasks = {}
+            has_task = False
+            for person in people:
+                p_idx = list(header_row).index(person)
+                task_val = str(row.iloc[p_idx]).strip() if pd.notna(row.iloc[p_idx]) else ""
+                if task_val.lower() in ["nan", "none"]: task_val = ""
+                tasks[person] = task_val
+                if task_val: has_task = True
+                
+            if has_task:
+                if current_day not in time_data:
+                    time_data[current_day] = []
+                time_data[current_day].append({"time": time_val, "tasks": tasks})
+                
+        days = list(time_data.keys())
+        if not days:
+            st.warning("데이터가 없습니다.")
+        else:
+            # 1. 날짜 선택
+            selected_day = st.selectbox("📅 날짜(DAY)를 선택하세요:", days)
+            
+            # 2. 시간 선택
+            day_times = [item["time"] for item in time_data[selected_day]]
+            selected_time = st.selectbox("⏰ 시간을 선택하세요:", day_times)
+            
+            st.divider()
+            st.markdown(f"### 📍 {selected_day} | {selected_time}")
+            
+            # 선택한 시간의 데이터 출력
+            for item in time_data[selected_day]:
+                if item["time"] == selected_time:
+                    for person, task in item["tasks"].items():
+                        if task:
+                            st.write(f"- **{person}**: {task}")
+                        else:
+                            st.write(f"- **{person}**: (공란/휴식)")
+                    break
+
     else:
         # 기존 인물별 보기 로직
         selected_person = selected_option
