@@ -5,54 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 스케줄 확인")
 
-# 🖨️ 다중 페이지 인쇄 완벽 지원 CSS
-st.markdown("""
-<style>
-@media print {
-    /* 1. 스트림릿 스크롤 영역 해제 (이게 없으면 1장만 인쇄됨) */
-    html, body, .stApp, .main, .block-container {
-        height: auto !important;
-        overflow: visible !important;
-        position: static !important;
-        display: block !important;
-    }
-
-    /* 2. 인쇄 시 웹사이트 기본 메뉴, 버튼 등 불필요한 요소 숨김 */
-    header, footer, .stSelectbox, .stAlert, [data-testid="stSidebar"], .st-emotion-cache-1wmy9hl { 
-        display: none !important; 
-    }
-
-    /* 3. A4 용지에 맞춘 표 디자인 강제 적용 */
-    table { 
-        width: 100% !important; 
-        border-collapse: collapse !important; 
-        font-family: 'Malgun Gothic', sans-serif !important; 
-        font-size: 11pt !important; 
-        page-break-inside: auto !important; /* 표 자체가 잘리지 않게 설정 */
-    }
-    th, td { 
-        border: 1px solid #000 !important; 
-        padding: 6px !important; 
-        text-align: center !important; 
-    }
-    th { 
-        background-color: #e6e6e6 !important; 
-        -webkit-print-color-adjust: exact !important; 
-        print-color-adjust: exact !important; 
-    }
-
-    /* 4. 페이지 넘어갈 때 행이 반으로 잘리지 않도록 보호하고 헤더 반복 */
-    thead { display: table-header-group !important; }
-    tr { page-break-inside: avoid !important; page-break-after: auto !important; }
-    
-    /* 5. 날짜(DAY)가 바뀔 때마다 새 페이지에서 시작하도록 세팅 */
-    h3 { page-break-before: always !important; margin-top: 0 !important; }
-    h3:first-of-type { page-break-before: auto !important; }
-}
-</style>
-""", unsafe_allow_html=True)
-
-# 엑셀 파일 로드
+# 엑셀 파일 로드 (캐싱을 통해 속도 향상)
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
 @st.cache_data
@@ -78,11 +31,11 @@ try:
     selected_option = st.selectbox("👀 무엇을 확인하시겠어요?", view_options)
     
     # ---------------------------------------------------------
-    # 1. 인쇄용 스케줄 (HTML 표 직접 렌더링)
+    # 1. 인쇄용 스케줄 (다운로드 방식) - 다중 페이지 완벽 지원
     # ---------------------------------------------------------
     if selected_option == "🖨️ 인쇄용 스케줄 (A4 최적화)":
-        st.subheader("🖨️ 인쇄용 화면 세팅")
-        st.info("출력할 대상을 선택한 뒤, 브라우저 메뉴에서 **[인쇄] (Ctrl+P 또는 Cmd+P)**를 누르세요. 이제 모든 페이지가 정상적으로 출력됩니다.")
+        st.subheader("🖨️ 완벽 인쇄 모드")
+        st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
         
         print_target = st.selectbox("출력할 대상:", ["전체 스케줄"] + people)
         
@@ -114,16 +67,58 @@ try:
         
         if print_target != "전체 스케줄":
             df_print = df_all[["DAY", "시간", print_target]]
-            df_print = df_print[df_print[print_target] != ""] # 공란 제거
+            df_print = df_print[df_print[print_target] != ""] 
         else:
             df_print = df_all
             
         days = df_print["DAY"].unique()
+        
+        # 📄 순수 HTML 텍스트 생성 (스트림릿 레이아웃 배제)
+        html_content = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <title>스케줄 인쇄</title>
+        <style>
+            body { font-family: 'Malgun Gothic', sans-serif; padding: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 40px; font-size: 11pt; }
+            th, td { border: 1px solid #000; padding: 10px; text-align: center; }
+            th { background-color: #e6e6e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            /* 페이지 넘김 방지 및 헤더 반복 설정 */
+            tr { page-break-inside: avoid; }
+            thead { display: table-header-group; }
+            h2 { page-break-before: always; margin-bottom: 10px; }
+            h2:first-of-type { page-break-before: auto; }
+            @page { size: auto; margin: 15mm; }
+        </style>
+        </head>
+        <body>
+        """
+        
+        for day in days:
+            day_df = df_print[df_print["DAY"] == day].drop(columns=["DAY"])
+            html_table = day_df.to_html(index=False, escape=False)
+            html_content += f"<h2>{day} - {print_target}</h2>\n"
+            html_content += html_table + "\n"
+            
+        html_content += "</body></html>"
+        
+        # 다운로드 버튼 생성
+        st.download_button(
+            label="📥 완벽 인쇄용 파일 다운로드 (클릭)",
+            data=html_content,
+            file_name=f"여름신앙학교_스케줄_{print_target}.html",
+            mime="text/html"
+        )
+        
+        st.divider()
+        st.caption("👇 참고용 미리보기 화면입니다. (인쇄는 위 다운로드 버튼을 이용해 주세요)")
+        
         for day in days:
             st.markdown(f"### {day} - {print_target}")
             day_df = df_print[df_print["DAY"] == day].drop(columns=["DAY"])
-            html_table = day_df.to_html(index=False, escape=False)
-            st.markdown(html_table, unsafe_allow_html=True)
+            st.markdown(day_df.to_html(index=False, escape=False), unsafe_allow_html=True)
             
     # ---------------------------------------------------------
     # 2. 전체 스케줄 보기
