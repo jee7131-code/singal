@@ -17,12 +17,12 @@ def load_schedule_data():
 def load_student_data():
     try:
         # 2. 추가하신 '비상연락망' 시트를 읽어오도록 적용
-        df_student = pd.read_excel(FILE_PATH, sheet_name='비상연락망')
+        df_student = pd.read_excel(FILE_PATH, sheet_name='교사 비상연락망')
         return df_student
     except Exception:
         # 혹시 '학생명단'으로 저장하셨을 경우를 대비한 안전장치
         try:
-            return pd.read_excel(FILE_PATH, sheet_name='학생명단')
+            return pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
         except Exception:
             return None
 
