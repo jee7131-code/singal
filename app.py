@@ -3,17 +3,31 @@ import pandas as pd
 
 # 모바일 화면에 맞춘 기본 설정
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
-st.title("📅 여름신앙학교 스케줄 확인")
+st.title("📅 여름신앙학교 종합 안내")
 
-# 엑셀 파일 로드 (캐싱을 통해 속도 향상)
+# 1. 변경된 파일 이름 적용
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
 @st.cache_data
-def load_data():
-    return pd.read_excel(FILE_PATH, sheet_name='타임테이블')
+def load_schedule_data():
+    df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
+    return df
+
+@st.cache_data
+def load_student_data():
+    try:
+        # 2. 추가하신 '비상연락망' 시트를 읽어오도록 적용
+        df_student = pd.read_excel(FILE_PATH, sheet_name='비상연락망')
+        return df_student
+    except Exception:
+        # 혹시 '학생명단'으로 저장하셨을 경우를 대비한 안전장치
+        try:
+            return pd.read_excel(FILE_PATH, sheet_name='학생명단')
+        except Exception:
+            return None
 
 try:
-    df_raw = load_data()
+    df_raw = load_schedule_data()
     
     # Header 위치 탐색 ('TIME' 행 찾아내기)
     header_row_idx = 2
@@ -26,14 +40,45 @@ try:
     header_row = df_raw.iloc[header_row_idx]
     people = [str(val).strip() for val in header_row.iloc[1:].dropna().values if str(val).strip()]
     
+    # ---------------------------------------------------------
+    # 🔧 [핵심 해결 로직] 세로 및 가로 병합 셀(NaN) 자동 채우기
+    # ---------------------------------------------------------
+    df_body = df_raw.iloc[header_row_idx + 1:].copy()
+    
+    # 1. 세로 병합 채우기 (시간 열)
+    df_body.iloc[:, 0] = df_body.iloc[:, 0].ffill() 
+    
+    # 2. 가로 병합 채우기 (사람 열 전체에 대해 왼쪽 값으로 오른쪽 빈칸 채우기)
+    df_body.iloc[:, 1:] = df_body.iloc[:, 1:].ffill(axis=1)
+    
     # 보기 모드 리스트
-    view_options = ["🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
+    view_options = ["📋 비상연락망 (학생 인적사항)", "🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
     selected_option = st.selectbox("👀 무엇을 확인하시겠어요?", view_options)
     
     # ---------------------------------------------------------
-    # 1. 인쇄용 스케줄 (다운로드 방식) - 다중 페이지 완벽 지원
+    # 0. 비상연락망 & 인적사항 보기
     # ---------------------------------------------------------
-    if selected_option == "🖨️ 인쇄용 스케줄 (A4 최적화)":
+    if selected_option == "📋 비상연락망 (학생 인적사항)":
+        st.subheader("📋 비상연락망 및 인적사항")
+        df_students = load_student_data()
+        
+        if df_students is None or df_students.empty:
+            st.warning("⚠️ 엑셀 파일에 '비상연락망' 시트가 없거나 데이터가 비어 있습니다. 시트 이름을 확인해 주세요.")
+        else:
+            # 검색 기능
+            search_query = st.text_input("🔍 학생 이름 또는 조/내용 검색:", "")
+            filtered_df = df_students.copy()
+            if search_query:
+                mask = filtered_df.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
+                filtered_df = filtered_df[mask]
+                
+            st.caption(f"총 {len(filtered_df)}건의 데이터가 조회되었습니다.")
+            st.dataframe(filtered_df, hide_index=True, use_container_width=True)
+
+    # ---------------------------------------------------------
+    # 1. 인쇄용 스케줄 (다운로드 방식)
+    # ---------------------------------------------------------
+    elif selected_option == "🖨️ 인쇄용 스케줄 (A4 최적화)":
         st.subheader("🖨️ 완벽 인쇄 모드")
         st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
         
@@ -42,8 +87,8 @@ try:
         all_data = []
         current_day = "DAY1"
         
-        for idx in range(header_row_idx + 1, len(df_raw)):
-            row = df_raw.iloc[idx]
+        for idx in range(len(df_body)):
+            row = df_body.iloc[idx]
             time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             if "DAY" in time_val.upper():
                 current_day = time_val
@@ -73,7 +118,6 @@ try:
             
         days = df_print["DAY"].unique()
         
-        # 📄 순수 HTML 텍스트 생성 (스트림릿 레이아웃 배제)
         html_content = """
         <!DOCTYPE html>
         <html>
@@ -85,7 +129,6 @@ try:
             table { width: 100%; border-collapse: collapse; margin-bottom: 40px; font-size: 11pt; }
             th, td { border: 1px solid #000; padding: 10px; text-align: center; }
             th { background-color: #e6e6e6; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            /* 페이지 넘김 방지 및 헤더 반복 설정 */
             tr { page-break-inside: avoid; }
             thead { display: table-header-group; }
             h2 { page-break-before: always; margin-bottom: 10px; }
@@ -104,22 +147,13 @@ try:
             
         html_content += "</body></html>"
         
-        # 다운로드 버튼 생성
         st.download_button(
             label="📥 완벽 인쇄용 파일 다운로드 (클릭)",
             data=html_content,
             file_name=f"여름신앙학교_스케줄_{print_target}.html",
             mime="text/html"
         )
-        
-        st.divider()
-        st.caption("👇 참고용 미리보기 화면입니다. (인쇄는 위 다운로드 버튼을 이용해 주세요)")
-        
-        for day in days:
-            st.markdown(f"### {day} - {print_target}")
-            day_df = df_print[df_print["DAY"] == day].drop(columns=["DAY"])
-            st.markdown(day_df.to_html(index=False, escape=False), unsafe_allow_html=True)
-            
+
     # ---------------------------------------------------------
     # 2. 전체 스케줄 보기
     # ---------------------------------------------------------
@@ -130,8 +164,8 @@ try:
         all_data = []
         current_day = "DAY1"
         
-        for idx in range(header_row_idx + 1, len(df_raw)):
-            row = df_raw.iloc[idx]
+        for idx in range(len(df_body)):
+            row = df_body.iloc[idx]
             time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             if "DAY" in time_val.upper():
                 current_day = time_val
@@ -158,7 +192,7 @@ try:
                 with tabs[i]:
                     day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
                     st.dataframe(day_df, hide_index=True, use_container_width=False)
-                    
+
     # ---------------------------------------------------------
     # 3. 특정 시간대 스케줄 보기
     # ---------------------------------------------------------
@@ -167,8 +201,8 @@ try:
         time_data = {}
         current_day = "DAY1"
         
-        for idx in range(header_row_idx + 1, len(df_raw)):
-            row = df_raw.iloc[idx]
+        for idx in range(len(df_body)):
+            row = df_body.iloc[idx]
             time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             if "DAY" in time_val.upper():
                 current_day = time_val
@@ -216,8 +250,8 @@ try:
         schedule_data = []
         current_day = "DAY1"
         
-        for idx in range(header_row_idx + 1, len(df_raw)):
-            row = df_raw.iloc[idx]
+        for idx in range(len(df_body)):
+            row = df_body.iloc[idx]
             time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
             if "DAY" in time_val.upper():
                 current_day = time_val
@@ -240,4 +274,4 @@ try:
                     st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
 
 except Exception as e:
-    st.error(f"엑셀 파일을 읽는 중 오류가 발생했습니다: {e}")
+    st.error(f"오류가 발생했습니다: {e}")
