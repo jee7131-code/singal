@@ -3,38 +3,50 @@ import pandas as pd
 import openpyxl
 from datetime import datetime
 
+# 모바일 화면 최적화 설정
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
-st.title("📅 여름신앙학교 종합 안내")
 
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
-def load_schedule_data():
-    df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
-    return df
+# 📢 [실시간 공지사항 로드 함수 - 캐시 비활성화]
+def load_notice_data():
+    try:
+        df_notice = pd.read_excel(FILE_PATH, sheet_name='공지사항')
+        if df_notice is not None and not df_notice.empty:
+            title = str(df_notice.iloc[0, 0]) if pd.notna(df_notice.iloc[0, 0]) else ""
+            content = str(df_notice.iloc[0, 1]) if len(df_notice.columns) > 1 and pd.notna(df_notice.iloc[0, 1]) else ""
+            return title, content
+    except Exception:
+        pass
+    return None, None
 
+# 🛠️ openpyxl을 이용한 병합 셀(Merged Cells) 완벽 해제 로직
 def load_excel_unmerged(file_path, sheet_name):
-    wb = openpyxl.load_workbook(file_path, data_only=True)
-    if sheet_name not in wb.sheetnames:
-        return None
-    ws = wb[sheet_name]
-    
-    merged_info = []
-    for rng in list(ws.merged_cells.ranges):
-        top_left_value = ws.cell(row=rng.min_row, column=rng.min_col).value
-        merged_info.append((rng, top_left_value))
+    try:
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        if sheet_name not in wb.sheetnames:
+            return None
+        ws = wb[sheet_name]
         
-    for rng, _ in merged_info:
-        ws.unmerge_cells(str(rng))
-        
-    for rng, val in merged_info:
-        for r in range(rng.min_row, rng.max_row + 1):
-            for c in range(rng.min_col, rng.max_col + 1):
-                ws.cell(row=r, column=c).value = val
-                
-    data = list(ws.values)
-    if not data:
+        merged_info = []
+        for rng in list(ws.merged_cells.ranges):
+            top_left_value = ws.cell(row=rng.min_row, column=rng.min_col).value
+            merged_info.append((rng, top_left_value))
+            
+        for rng, _ in merged_info:
+            ws.unmerge_cells(str(rng))
+            
+        for rng, val in merged_info:
+            for r in range(rng.min_row, rng.max_row + 1):
+                for c in range(rng.min_col, rng.max_col + 1):
+                    ws.cell(row=r, column=c).value = val
+                    
+        data = list(ws.values)
+        if not data:
+            return None
+        return pd.DataFrame(data)
+    except Exception:
         return None
-    return pd.DataFrame(data)
 
 def load_contacts_data():
     teacher_df = None
@@ -61,31 +73,25 @@ def load_contacts_data():
         
     return teacher_df, student_df
 
-# 현재 접속 날짜 기반 자동 DAY 및 시간 계산 함수
 def get_current_day_and_time(available_days, time_data):
     now = datetime.now()
-    today_str = now.strftime("%Y-%m-%d") # YYYY-MM-DD
-    current_time_str = now.strftime("%H:%M") # HH:MM
+    today_str = now.strftime("%Y-%m-%d")
+    current_time_str = now.strftime("%H:%M")
     
-    # 7월 31일 -> DAY1, 8월 1일 -> DAY2, 8월 2일 -> DAY3 매핑
     target_day = "DAY1"
     if "2026-08-01" in today_str or "08-01" in today_str:
         target_day = "DAY2"
     elif "2026-08-02" in today_str or "08-02" in today_str:
         target_day = "DAY3"
         
-    # 만약 데이터 목록에 해당 DAY가 없으면 첫번째 DAY 선택
     if target_day not in available_days and len(available_days) > 0:
         target_day = available_days[0]
         
-    # 가장 최근/현재 시간 찾기
     selected_time = None
     if target_day in time_data:
         day_items = time_data[target_day]
-        # 시간순으로 비교하여 현재 시각 이하인 가장 가까운 타임스탬프 탐색
         for item in day_items:
             t = item["time"]
-            # '08:30:00' -> '08:30' 처리
             t_short = t.split(" ")[0].replace("-", "").strip()
             if t_short <= current_time_str:
                 selected_time = t
@@ -96,11 +102,18 @@ def get_current_day_and_time(available_days, time_data):
             
     return target_day, selected_time
 
+# 상단 제목 및 공지 배너
+st.title("📅 여름신앙학교 종합 안내")
+
+notice_title, notice_content = load_notice_data()
+if notice_title and notice_title.lower() != 'nan':
+    st.error(f"### {notice_title}\n{notice_content if notice_content and notice_content.lower() != 'nan' else ''}")
+
 try:
     df_raw = load_excel_unmerged(FILE_PATH, '타임테이블')
     
     if df_raw is None:
-        st.error("엑셀 파일에서 '타임테이블' 시트를 찾을 수 없습니다.")
+        st.error("엑셀 파일에서 '타임테이블' 시트를 찾을 수 없습니다. 파일명을 확인해 주세요.")
     else:
         header_row_idx = 2
         for idx, row in df_raw.iterrows():
@@ -119,7 +132,8 @@ try:
         # =========================================================
         with main_tab1:
             st.subheader("🗓️ 일정표 확인")
-            schedule_options = ["🕒 현재 시간대 스케줄 (실시간)", "🌟 전체 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
+            
+            schedule_options = ["🕒 현재 시간대 스케줄 (실시간)", "🔍 선생님/교사 이름 검색", "🌟 전체 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
             # 1-1. 현재 시간대 스케줄 (실시간 자동 선택)
@@ -155,7 +169,6 @@ try:
                 if days:
                     auto_day, auto_time = get_current_day_and_time(days, time_data)
                     
-                    # 드롭다운 기본값 위치 설정
                     day_idx = days.index(auto_day) if auto_day in days else 0
                     selected_day = st.selectbox("📅 날짜(DAY) 선택:", days, index=day_idx, key="time_day_select")
                     
@@ -176,7 +189,42 @@ try:
                                     st.write(f"- **{person}**: (공란/휴식)")
                             break
 
-            # 1-2. 전체 스케줄 보기
+            # 1-2. 🔍 선생님/교사 이름 검색 기능 (신규 추가!)
+            elif selected_schedule == "🔍 선생님/교사 이름 검색":
+                st.markdown("### 🔍 교사/봉사자 개인 일정 빠른 검색")
+                search_person = st.selectbox("선생님 이름을 선택하세요:", people, key="person_search_dropdown")
+                
+                if search_person:
+                    person_col_idx = list(header_row).index(search_person)
+                    schedule_data = []
+                    current_day = "DAY1"
+                    
+                    for idx in range(len(df_body)):
+                        row = df_body.iloc[idx]
+                        time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+                        if "DAY" in time_val.upper():
+                            current_day = time_val
+                            continue
+                        task_val = str(row.iloc[person_col_idx]).strip() if pd.notna(row.iloc[person_col_idx]) else ""
+                        if task_val.lower() in ["nan", "none"]: task_val = ""
+                        if time_val.lower() in ["nan", "none"]: time_val = ""
+                        
+                        if time_val or task_val:
+                            schedule_data.append({"DAY": current_day, "시간": time_val, "담당 업무": task_val})
+                            
+                    df_schedule = pd.DataFrame(schedule_data)
+                    st.divider()
+                    st.markdown(f"### ✅ **{search_person}** 선생님 일정 요약")
+                    
+                    days = df_schedule["DAY"].unique()
+                    if len(days) > 0:
+                        day_tabs = st.tabs(list(days))
+                        for i, day in enumerate(days):
+                            with day_tabs[i]:
+                                day_df = df_schedule[df_schedule["DAY"] == day]
+                                st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
+
+            # 1-3. 전체 스케줄 보기
             elif selected_schedule == "🌟 전체 스케줄 보기":
                 st.caption("👈 모바일에서는 표를 좌우로 스크롤하여 모든 인물을 확인할 수 있습니다.")
                 all_data = []
@@ -211,7 +259,7 @@ try:
                             day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
                             st.dataframe(day_df, hide_index=True, use_container_width=False)
 
-            # 1-3. 인쇄용 스케줄 (다운로드 방식)
+            # 1-4. 인쇄용 스케줄 (다운로드 방식)
             elif selected_schedule == "🖨️ 인쇄용 스케줄 (A4 최적화)":
                 st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
                 print_target = st.selectbox("출력할 대상:", ["전체 스케줄"] + people, key="print_target_select")
@@ -286,7 +334,7 @@ try:
                     mime="text/html"
                 )
 
-            # 1-4. 개인별 스케줄 보기
+            # 1-5. 개별 인물 선택 보기
             else:
                 selected_person = selected_schedule
                 person_col_idx = list(header_row).index(selected_person)
