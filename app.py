@@ -5,7 +5,7 @@ import pandas as pd
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
-FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종)_3.xlsx'
+FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
 # 엑셀 데이터 로드 함수 (실시간 반영을 위해 캐시 미사용)
 def load_schedule_data():
