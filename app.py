@@ -41,12 +41,16 @@ def load_contacts_data():
     
     try:
         teacher_df = pd.read_excel(FILE_PATH, sheet_name='교사 비상연락망')
+        if teacher_df is not None and not teacher_df.empty:
+            # 🛠️ [핵심 수정] 열 이름 앞뒤 공백 자동 제거 (전화번호 공백 문제 해결)
+            teacher_df.columns = teacher_df.columns.str.strip()
     except Exception:
         pass
         
     try:
         student_df = pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
         if student_df is not None and not student_df.empty:
+            student_df.columns = student_df.columns.str.strip()
             sort_cols = []
             if '학년' in student_df.columns: sort_cols.append('학년')
             if '이름' in student_df.columns: sort_cols.append('이름')
@@ -279,6 +283,8 @@ try:
                         role = str(row.get('직함', '') if pd.notna(row.get('직함')) else '')
                         name = str(row.get('이름', '') if pd.notna(row.get('이름')) else '')
                         b_name = str(row.get('세례명', '') if pd.notna(row.get('세례명')) else '')
+                        
+                        # 전화번호 가져오기
                         phone = str(row.get('전화번호', '') if pd.notna(row.get('전화번호')) else '')
                         
                         with st.container(border=True):
@@ -287,7 +293,7 @@ try:
                                 st.markdown(f"**{role}** | **{name}** ({b_name})")
                             with c2:
                                 if phone and phone.lower() != 'nan':
-                                    clean_p = phone.replace('-', '')
+                                    clean_p = phone.replace('-', '').strip()
                                     st.markdown(f"[📞 전화 걸기](tel:{clean_p})")
                                 else:
                                     st.caption("번호 없음")
@@ -303,7 +309,6 @@ try:
                         mask = filtered_s.astype(str).apply(lambda row: row.str.contains(search_q, case=False).any(), axis=1)
                         filtered_s = filtered_s[mask]
                     
-                    # 보기 방식 선택
                     view_mode = st.radio("📱 보기 모드:", ["📱 카드형 (모바일 추천)", "📊 표 전체보기"], horizontal=True)
                     
                     if view_mode == "📊 표 전체보기":
@@ -311,7 +316,6 @@ try:
                     else:
                         st.caption(f"총 {len(filtered_s)}명 | 학년별 접이식 메뉴를 눌러보세요.")
                         
-                        # 학년별그룹화
                         if '학년' in filtered_s.columns:
                             grades = filtered_s['학년'].unique()
                             for grade in grades:
@@ -330,19 +334,18 @@ try:
                                             col_s, col_p = st.columns(2)
                                             with col_s:
                                                 if s_phone and s_phone.lower() != 'nan':
-                                                    clean_s = s_phone.replace('-', '')
+                                                    clean_s = s_phone.replace('-', '').strip()
                                                     st.markdown(f"📱 **학생:** [{s_phone}](tel:{clean_s})")
                                                 else:
                                                     st.caption("📱 학생: 번호 없음")
                                                     
                                             with col_p:
                                                 if p_phone and p_phone.lower() != 'nan':
-                                                    clean_p = p_phone.replace('-', '')
+                                                    clean_p = p_phone.replace('-', '').strip()
                                                     st.markdown(f"👨‍👩‍👦 **부모님:** [{p_phone}](tel:{clean_p})")
                                                 else:
                                                     st.caption("👨‍👩‍👦 부모님: 번호 없음")
                         else:
-                            # 학년 컬럼이 없을 경우 전체 출력
                             for idx, s_row in filtered_s.iterrows():
                                 s_name = str(s_row.get('이름', ''))
                                 s_bname = str(s_row.get('세례명', ''))
@@ -354,10 +357,10 @@ try:
                                     col_s, col_p = st.columns(2)
                                     with col_s:
                                         if s_phone and s_phone.lower() != 'nan':
-                                            st.markdown(f"📱 [학생 통화](tel:{s_phone.replace('-', '')})")
+                                            st.markdown(f"📱 [학생 통화](tel:{s_phone.replace('-', '').strip()})")
                                     with col_p:
                                         if p_phone and p_phone.lower() != 'nan':
-                                            st.markdown(f"👨‍👩‍👦 [부모님 통화](tel:{p_phone.replace('-', '')})")
+                                            st.markdown(f"👨‍👩‍👦 [부모님 통화](tel:{p_phone.replace('-', '').strip()})")
                 else:
                     st.info("학생 비상연락망 데이터가 없습니다.")
 
