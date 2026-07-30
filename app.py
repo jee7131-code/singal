@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import openpyxl
+from datetime import datetime
 
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
@@ -60,6 +61,41 @@ def load_contacts_data():
         
     return teacher_df, student_df
 
+# 현재 접속 날짜 기반 자동 DAY 및 시간 계산 함수
+def get_current_day_and_time(available_days, time_data):
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d") # YYYY-MM-DD
+    current_time_str = now.strftime("%H:%M") # HH:MM
+    
+    # 7월 31일 -> DAY1, 8월 1일 -> DAY2, 8월 2일 -> DAY3 매핑
+    target_day = "DAY1"
+    if "2026-08-01" in today_str or "08-01" in today_str:
+        target_day = "DAY2"
+    elif "2026-08-02" in today_str or "08-02" in today_str:
+        target_day = "DAY3"
+        
+    # 만약 데이터 목록에 해당 DAY가 없으면 첫번째 DAY 선택
+    if target_day not in available_days and len(available_days) > 0:
+        target_day = available_days[0]
+        
+    # 가장 최근/현재 시간 찾기
+    selected_time = None
+    if target_day in time_data:
+        day_items = time_data[target_day]
+        # 시간순으로 비교하여 현재 시각 이하인 가장 가까운 타임스탬프 탐색
+        for item in day_items:
+            t = item["time"]
+            # '08:30:00' -> '08:30' 처리
+            t_short = t.split(" ")[0].replace("-", "").strip()
+            if t_short <= current_time_str:
+                selected_time = t
+            else:
+                break
+        if not selected_time and len(day_items) > 0:
+            selected_time = day_items[0]["time"]
+            
+    return target_day, selected_time
+
 try:
     df_raw = load_excel_unmerged(FILE_PATH, '타임테이블')
     
@@ -83,10 +119,65 @@ try:
         # =========================================================
         with main_tab1:
             st.subheader("🗓️ 일정표 확인")
-            schedule_options = ["🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
+            schedule_options = ["🕒 현재 시간대 스케줄 (실시간)", "🌟 전체 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
-            if selected_schedule == "🌟 전체 스케줄 보기":
+            # 1-1. 현재 시간대 스케줄 (실시간 자동 선택)
+            if selected_schedule == "🕒 현재 시간대 스케줄 (실시간)":
+                time_data = {}
+                current_day = "DAY1"
+                
+                for idx in range(len(df_body)):
+                    row = df_body.iloc[idx]
+                    time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
+                    if "DAY" in time_val.upper():
+                        current_day = time_val
+                        continue
+                    if time_val.lower() in ["nan", "none", ""]: 
+                        continue
+                        
+                    tasks = {}
+                    has_task = False
+                    for person in people:
+                        p_idx = list(header_row).index(person)
+                        task_val = str(row.iloc[p_idx]).strip() if pd.notna(row.iloc[p_idx]) else ""
+                        if task_val.lower() in ["nan", "none"]: task_val = ""
+                        tasks[person] = task_val
+                        if task_val: has_task = True
+                        
+                    if has_task:
+                        if current_day not in time_data:
+                            time_data[current_day] = []
+                        time_data[current_day].append({"time": time_val, "tasks": tasks})
+                        
+                days = list(time_data.keys())
+                
+                if days:
+                    auto_day, auto_time = get_current_day_and_time(days, time_data)
+                    
+                    # 드롭다운 기본값 위치 설정
+                    day_idx = days.index(auto_day) if auto_day in days else 0
+                    selected_day = st.selectbox("📅 날짜(DAY) 선택:", days, index=day_idx, key="time_day_select")
+                    
+                    day_times = [item["time"] for item in time_data[selected_day]]
+                    time_idx = day_times.index(auto_time) if auto_time in day_times else 0
+                    selected_time = st.selectbox("⏰ 시간 선택:", day_times, index=time_idx, key="time_hour_select")
+                    
+                    st.divider()
+                    st.markdown(f"### 📍 {selected_day} | {selected_time}")
+                    st.caption("💡 접속 당시 시각에 맞춰 현재 진행 중인 일정이 자동 안내됩니다.")
+                    
+                    for item in time_data[selected_day]:
+                        if item["time"] == selected_time:
+                            for person, task in item["tasks"].items():
+                                if task:
+                                    st.write(f"- **{person}**: {task}")
+                                else:
+                                    st.write(f"- **{person}**: (공란/휴식)")
+                            break
+
+            # 1-2. 전체 스케줄 보기
+            elif selected_schedule == "🌟 전체 스케줄 보기":
                 st.caption("👈 모바일에서는 표를 좌우로 스크롤하여 모든 인물을 확인할 수 있습니다.")
                 all_data = []
                 current_day = "DAY1"
@@ -119,51 +210,8 @@ try:
                         with day_tabs[i]:
                             day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
                             st.dataframe(day_df, hide_index=True, use_container_width=False)
-                            
-            elif selected_schedule == "🕒 특정 시간대 스케줄 보기":
-                time_data = {}
-                current_day = "DAY1"
-                
-                for idx in range(len(df_body)):
-                    row = df_body.iloc[idx]
-                    time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-                    if "DAY" in time_val.upper():
-                        current_day = time_val
-                        continue
-                    if time_val.lower() in ["nan", "none", ""]: 
-                        continue
-                        
-                    tasks = {}
-                    has_task = False
-                    for person in people:
-                        p_idx = list(header_row).index(person)
-                        task_val = str(row.iloc[p_idx]).strip() if pd.notna(row.iloc[p_idx]) else ""
-                        if task_val.lower() in ["nan", "none"]: task_val = ""
-                        tasks[person] = task_val
-                        if task_val: has_task = True
-                        
-                    if has_task:
-                        if current_day not in time_data:
-                            time_data[current_day] = []
-                        time_data[current_day].append({"time": time_val, "tasks": tasks})
-                        
-                days = list(time_data.keys())
-                if days:
-                    selected_day = st.selectbox("📅 날짜(DAY)를 선택하세요:", days, key="time_day_select")
-                    day_times = [item["time"] for item in time_data[selected_day]]
-                    selected_time = st.selectbox("⏰ 시간을 선택하세요:", day_times, key="time_hour_select")
-                    
-                    st.divider()
-                    st.markdown(f"### 📍 {selected_day} | {selected_time}")
-                    for item in time_data[selected_day]:
-                        if item["time"] == selected_time:
-                            for person, task in item["tasks"].items():
-                                if task:
-                                    st.write(f"- **{person}**: {task}")
-                                else:
-                                    st.write(f"- **{person}**: (공란/휴식)")
-                            break
 
+            # 1-3. 인쇄용 스케줄 (다운로드 방식)
             elif selected_schedule == "🖨️ 인쇄용 스케줄 (A4 최적화)":
                 st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
                 print_target = st.selectbox("출력할 대상:", ["전체 스케줄"] + people, key="print_target_select")
@@ -238,6 +286,7 @@ try:
                     mime="text/html"
                 )
 
+            # 1-4. 개인별 스케줄 보기
             else:
                 selected_person = selected_schedule
                 person_col_idx = list(header_row).index(selected_person)
@@ -268,7 +317,7 @@ try:
                             st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
 
         # =========================================================
-        # TAB 2: 비상연락망 (실제 번호 직접 노출 적용)
+        # TAB 2: 비상연락망
         # =========================================================
         with main_tab2:
             st.subheader("📞 비상연락망 안내")
@@ -291,7 +340,6 @@ try:
                             with c2:
                                 if phone and phone.lower() != 'nan':
                                     clean_p = phone.replace('-', '').strip()
-                                    # 🛠️ '전화 걸기' 문구 대신 실제 전화번호(phone)를 노출
                                     st.markdown(f"📞 [{phone}](tel:{clean_p})")
                                 else:
                                     st.caption("번호 없음")
