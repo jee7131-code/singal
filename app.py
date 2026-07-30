@@ -2,41 +2,38 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 
-# 모바일 화면에 맞춘 기본 설정
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
-# 🛠️ [완벽 해결] openpyxl을 이용하여 엑셀의 병합셀(Merged Cells)을 좌표 단위로 완벽하게 풀어내는 함수
+def load_schedule_data():
+    df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
+    return df
+
 def load_excel_unmerged(file_path, sheet_name):
     wb = openpyxl.load_workbook(file_path, data_only=True)
     if sheet_name not in wb.sheetnames:
         return None
     ws = wb[sheet_name]
     
-    # 1. 모든 병합 영역 좌표와 좌상단(원본) 값 기록
     merged_info = []
     for rng in list(ws.merged_cells.ranges):
         top_left_value = ws.cell(row=rng.min_row, column=rng.min_col).value
         merged_info.append((rng, top_left_value))
         
-    # 2. 병합 해제 (Unmerge)
     for rng, _ in merged_info:
         ws.unmerge_cells(str(rng))
         
-    # 3. 병합되어 있던 모든 셀 영역에 원본 값 복사 채우기
     for rng, val in merged_info:
         for r in range(rng.min_row, rng.max_row + 1):
             for c in range(rng.min_col, rng.max_col + 1):
                 ws.cell(row=r, column=c).value = val
                 
-    # 4. DataFrame으로 변환
     data = list(ws.values)
     if not data:
         return None
-    df = pd.DataFrame(data)
-    return df
+    return pd.DataFrame(data)
 
 def load_contacts_data():
     teacher_df = None
@@ -49,13 +46,10 @@ def load_contacts_data():
         
     try:
         student_df = pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
-        # 학년별 -> 이름별 오름차순 정렬
         if student_df is not None and not student_df.empty:
             sort_cols = []
-            if '학년' in student_df.columns:
-                sort_cols.append('학년')
-            if '이름' in student_df.columns:
-                sort_cols.append('이름')
+            if '학년' in student_df.columns: sort_cols.append('학년')
+            if '이름' in student_df.columns: sort_cols.append('이름')
             if sort_cols:
                 student_df = student_df.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     except Exception:
@@ -64,29 +58,21 @@ def load_contacts_data():
     return teacher_df, student_df
 
 try:
-    # 병합셀이 완전히 해제된 원본 데이터 로드
     df_raw = load_excel_unmerged(FILE_PATH, '타임테이블')
     
     if df_raw is None:
-        st.error(f"엑셀 파일에서 '타임테이블' 시트를 찾을 수 없습니다.")
+        st.error("엑셀 파일에서 '타임테이블' 시트를 찾을 수 없습니다.")
     else:
-        # Header 위치 탐색 ('TIME' 행 찾아내기)
         header_row_idx = 2
         for idx, row in df_raw.iterrows():
             if str(row.iloc[0]).strip() == 'TIME':
                 header_row_idx = idx
                 break
                 
-        # 인물 목록 추출
         header_row = df_raw.iloc[header_row_idx]
         people = [str(val).strip() for val in header_row.iloc[1:].dropna().values if str(val).strip()]
-        
-        # 시간/업무 본문 데이터 추출
         df_body = df_raw.iloc[header_row_idx + 1:].copy()
         
-        # ---------------------------------------------------------
-        # 🌟 최상단 메인 탭 분리 (스케줄 vs 비상연락망)
-        # ---------------------------------------------------------
         main_tab1, main_tab2 = st.tabs(["📅 신앙학교 스케줄", "📞 비상연락망"])
         
         # =========================================================
@@ -94,11 +80,9 @@ try:
         # =========================================================
         with main_tab1:
             st.subheader("🗓️ 일정표 확인")
-            
             schedule_options = ["🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
-            # 1-1. 전체 스케줄 보기
             if selected_schedule == "🌟 전체 스케줄 보기":
                 st.caption("👈 모바일에서는 표를 좌우로 스크롤하여 모든 인물을 확인할 수 있습니다.")
                 all_data = []
@@ -133,7 +117,6 @@ try:
                             day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
                             st.dataframe(day_df, hide_index=True, use_container_width=False)
                             
-            # 1-2. 특정 시간대 스케줄 보기
             elif selected_schedule == "🕒 특정 시간대 스케줄 보기":
                 time_data = {}
                 current_day = "DAY1"
@@ -178,7 +161,6 @@ try:
                                     st.write(f"- **{person}**: (공란/휴식)")
                             break
 
-            # 1-3. 인쇄용 스케줄 (다운로드 방식)
             elif selected_schedule == "🖨️ 인쇄용 스케줄 (A4 최적화)":
                 st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
                 print_target = st.selectbox("출력할 대상:", ["전체 스케줄"] + people, key="print_target_select")
@@ -253,7 +235,6 @@ try:
                     mime="text/html"
                 )
 
-            # 1-4. 개인별 스케줄 보기
             else:
                 selected_person = selected_schedule
                 person_col_idx = list(header_row).index(selected_person)
@@ -284,33 +265,101 @@ try:
                             st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
 
         # =========================================================
-        # TAB 2: 비상연락망
+        # TAB 2: 비상연락망 (📱 모바일 맞춤형 카드 뷰 적용)
         # =========================================================
         with main_tab2:
             st.subheader("📞 비상연락망 안내")
             teacher_df, student_df = load_contacts_data()
             
-            contact_tab1, contact_tab2 = st.tabs(["👨‍🏫 교사 비상연락망", "🧑‍🎓 학생 비상연락망"])
+            contact_tab1, contact_tab2 = st.tabs(["👨‍🏫 교사 연락망", "🧑‍🎓 학생 연락망"])
             
             with contact_tab1:
                 if teacher_df is not None and not teacher_df.empty:
-                    st.dataframe(teacher_df, hide_index=True, use_container_width=True)
+                    for idx, row in teacher_df.iterrows():
+                        role = str(row.get('직함', '') if pd.notna(row.get('직함')) else '')
+                        name = str(row.get('이름', '') if pd.notna(row.get('이름')) else '')
+                        b_name = str(row.get('세례명', '') if pd.notna(row.get('세례명')) else '')
+                        phone = str(row.get('전화번호', '') if pd.notna(row.get('전화번호')) else '')
+                        
+                        with st.container(border=True):
+                            c1, c2 = st.columns([2, 1])
+                            with c1:
+                                st.markdown(f"**{role}** | **{name}** ({b_name})")
+                            with c2:
+                                if phone and phone.lower() != 'nan':
+                                    clean_p = phone.replace('-', '')
+                                    st.markdown(f"[📞 전화 걸기](tel:{clean_p})")
+                                else:
+                                    st.caption("번호 없음")
                 else:
-                    st.info("교사 비상연락망 데이터가 없거나 시트명을 확인해 주세요.")
+                    st.info("교사 비상연락망 데이터가 없습니다.")
                     
             with contact_tab2:
                 if student_df is not None and not student_df.empty:
-                    st.caption("📌 학년별 ➔ 이름별 오름차순으로 자동 정렬되었습니다.")
-                    search_query = st.text_input("🔍 학생 이름 또는 조 검색:", "", key="student_search")
-                    filtered_df = student_df.copy()
-                    if search_query:
-                        mask = filtered_df.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
-                        filtered_df = filtered_df[mask]
+                    search_q = st.text_input("🔍 학생 이름 또는 세례명 검색:", "", key="student_search_card")
+                    
+                    filtered_s = student_df.copy()
+                    if search_q:
+                        mask = filtered_s.astype(str).apply(lambda row: row.str.contains(search_q, case=False).any(), axis=1)
+                        filtered_s = filtered_s[mask]
+                    
+                    # 보기 방식 선택
+                    view_mode = st.radio("📱 보기 모드:", ["📱 카드형 (모바일 추천)", "📊 표 전체보기"], horizontal=True)
+                    
+                    if view_mode == "📊 표 전체보기":
+                        st.dataframe(filtered_s, hide_index=True, use_container_width=True)
+                    else:
+                        st.caption(f"총 {len(filtered_s)}명 | 학년별 접이식 메뉴를 눌러보세요.")
                         
-                    st.caption(f"총 {len(filtered_df)}건의 데이터가 조회되었습니다.")
-                    st.dataframe(filtered_df, hide_index=True, use_container_width=True)
+                        # 학년별그룹화
+                        if '학년' in filtered_s.columns:
+                            grades = filtered_s['학년'].unique()
+                            for grade in grades:
+                                grade_data = filtered_s[filtered_s['학년'] == grade]
+                                with st.expander(f"🎓 **{grade}** ({len(grade_data)}명)", expanded=True):
+                                    for idx, s_row in grade_data.iterrows():
+                                        s_name = str(s_row.get('이름', ''))
+                                        s_bname = str(s_row.get('세례명', ''))
+                                        s_gender = str(s_row.get('성별', ''))
+                                        s_phone = str(s_row.get('학생 연락처', ''))
+                                        p_phone = str(s_row.get('학부모 연락처', ''))
+                                        
+                                        with st.container(border=True):
+                                            st.markdown(f"👤 **{s_name}** ({s_bname}) · {s_gender}")
+                                            
+                                            col_s, col_p = st.columns(2)
+                                            with col_s:
+                                                if s_phone and s_phone.lower() != 'nan':
+                                                    clean_s = s_phone.replace('-', '')
+                                                    st.markdown(f"📱 **학생:** [{s_phone}](tel:{clean_s})")
+                                                else:
+                                                    st.caption("📱 학생: 번호 없음")
+                                                    
+                                            with col_p:
+                                                if p_phone and p_phone.lower() != 'nan':
+                                                    clean_p = p_phone.replace('-', '')
+                                                    st.markdown(f"👨‍👩‍👦 **부모님:** [{p_phone}](tel:{clean_p})")
+                                                else:
+                                                    st.caption("👨‍👩‍👦 부모님: 번호 없음")
+                        else:
+                            # 학년 컬럼이 없을 경우 전체 출력
+                            for idx, s_row in filtered_s.iterrows():
+                                s_name = str(s_row.get('이름', ''))
+                                s_bname = str(s_row.get('세례명', ''))
+                                s_phone = str(s_row.get('학생 연락처', ''))
+                                p_phone = str(s_row.get('학부모 연락처', ''))
+                                
+                                with st.container(border=True):
+                                    st.markdown(f"👤 **{s_name}** ({s_bname})")
+                                    col_s, col_p = st.columns(2)
+                                    with col_s:
+                                        if s_phone and s_phone.lower() != 'nan':
+                                            st.markdown(f"📱 [학생 통화](tel:{s_phone.replace('-', '')})")
+                                    with col_p:
+                                        if p_phone and p_phone.lower() != 'nan':
+                                            st.markdown(f"👨‍👩‍👦 [부모님 통화](tel:{p_phone.replace('-', '')})")
                 else:
-                    st.info("학생 비상연락망 데이터가 없거나 시트명을 확인해 주세요.")
+                    st.info("학생 비상연락망 데이터가 없습니다.")
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
