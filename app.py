@@ -5,7 +5,7 @@ import openpyxl
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
-FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
+FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종)_3.xlsx'
 
 def load_schedule_data():
     df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
@@ -42,7 +42,6 @@ def load_contacts_data():
     try:
         teacher_df = pd.read_excel(FILE_PATH, sheet_name='교사 비상연락망')
         if teacher_df is not None and not teacher_df.empty:
-            # 🛠️ [핵심 수정] 열 이름 앞뒤 공백 자동 제거 (전화번호 공백 문제 해결)
             teacher_df.columns = teacher_df.columns.str.strip()
     except Exception:
         pass
@@ -269,7 +268,7 @@ try:
                             st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
 
         # =========================================================
-        # TAB 2: 비상연락망 (📱 모바일 맞춤형 카드 뷰 적용)
+        # TAB 2: 비상연락망 (실제 번호 직접 노출 적용)
         # =========================================================
         with main_tab2:
             st.subheader("📞 비상연락망 안내")
@@ -283,18 +282,17 @@ try:
                         role = str(row.get('직함', '') if pd.notna(row.get('직함')) else '')
                         name = str(row.get('이름', '') if pd.notna(row.get('이름')) else '')
                         b_name = str(row.get('세례명', '') if pd.notna(row.get('세례명')) else '')
-                        
-                        # 전화번호 가져오기
                         phone = str(row.get('전화번호', '') if pd.notna(row.get('전화번호')) else '')
                         
                         with st.container(border=True):
-                            c1, c2 = st.columns([2, 1])
+                            c1, c2 = st.columns([1.5, 1.5])
                             with c1:
                                 st.markdown(f"**{role}** | **{name}** ({b_name})")
                             with c2:
                                 if phone and phone.lower() != 'nan':
                                     clean_p = phone.replace('-', '').strip()
-                                    st.markdown(f"[📞 전화 걸기](tel:{clean_p})")
+                                    # 🛠️ '전화 걸기' 문구 대신 실제 전화번호(phone)를 노출
+                                    st.markdown(f"📞 [{phone}](tel:{clean_p})")
                                 else:
                                     st.caption("번호 없음")
                 else:
@@ -357,10 +355,10 @@ try:
                                     col_s, col_p = st.columns(2)
                                     with col_s:
                                         if s_phone and s_phone.lower() != 'nan':
-                                            st.markdown(f"📱 [학생 통화](tel:{s_phone.replace('-', '').strip()})")
+                                            st.markdown(f"📱 [{s_phone}](tel:{s_phone.replace('-', '').strip()})")
                                     with col_p:
                                         if p_phone and p_phone.lower() != 'nan':
-                                            st.markdown(f"👨‍👩‍👦 [부모님 통화](tel:{p_phone.replace('-', '').strip()})")
+                                            st.markdown(f"👨‍👩‍👦 [{p_phone}](tel:{p_phone.replace('-', '').strip()})")
                 else:
                     st.info("학생 비상연락망 데이터가 없습니다.")
 
