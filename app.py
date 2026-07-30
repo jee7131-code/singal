@@ -5,7 +5,7 @@ import openpyxl
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
-FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종)_3.xlsx'
+FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
 def load_schedule_data():
     df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
