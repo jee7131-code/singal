@@ -8,7 +8,7 @@ st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="�
 
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
-# 📢 [실시간 공지사항 로드 함수 - 캐시 비활성화]
+# 📢 실시간 공지사항 로드 함수
 def load_notice_data():
     try:
         df_notice = pd.read_excel(FILE_PATH, sheet_name='공지사항')
@@ -20,7 +20,7 @@ def load_notice_data():
         pass
     return None, None
 
-# 🛠️ openpyxl을 이용한 병합 셀(Merged Cells) 완벽 해제 로직
+# openpyxl을 이용한 병합 셀(Merged Cells) 해제 로직
 def load_excel_unmerged(file_path, sheet_name):
     try:
         wb = openpyxl.load_workbook(file_path, data_only=True)
@@ -133,7 +133,13 @@ try:
         with main_tab1:
             st.subheader("🗓️ 일정표 확인")
             
-            schedule_options = ["🕒 현재 시간대 스케줄 (실시간)", "🔍 선생님/교사 이름 검색", "🌟 전체 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
+            # 💡 [드롭다운 메뉴를 핵심 4가지로 단축 정리]
+            schedule_options = [
+                "🕒 현재 시간대 스케줄 (실시간)", 
+                "🔍 선생님/교사 이름 검색", 
+                "🌟 전체 스케줄 보기", 
+                "🖨️ 인쇄용 스케줄 (A4 최적화)"
+            ]
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
             # 1-1. 현재 시간대 스케줄 (실시간 자동 선택)
@@ -189,7 +195,7 @@ try:
                                     st.write(f"- **{person}**: (공란/휴식)")
                             break
 
-            # 1-2. 🔍 선생님/교사 이름 검색 기능 (신규 추가!)
+            # 1-2. 🔍 선생님/교사 이름 검색 기능
             elif selected_schedule == "🔍 선생님/교사 이름 검색":
                 st.markdown("### 🔍 교사/봉사자 개인 일정 빠른 검색")
                 search_person = st.selectbox("선생님 이름을 선택하세요:", people, key="person_search_dropdown")
@@ -333,36 +339,6 @@ try:
                     file_name=f"여름신앙학교_스케줄_{print_target}.html",
                     mime="text/html"
                 )
-
-            # 1-5. 개별 인물 선택 보기
-            else:
-                selected_person = selected_schedule
-                person_col_idx = list(header_row).index(selected_person)
-                schedule_data = []
-                current_day = "DAY1"
-                
-                for idx in range(len(df_body)):
-                    row = df_body.iloc[idx]
-                    time_val = str(row.iloc[0]).strip() if pd.notna(row.iloc[0]) else ""
-                    if "DAY" in time_val.upper():
-                        current_day = time_val
-                        continue
-                    task_val = str(row.iloc[person_col_idx]).strip() if pd.notna(row.iloc[person_col_idx]) else ""
-                    if task_val.lower() in ["nan", "none"]: task_val = ""
-                    if time_val.lower() in ["nan", "none"]: time_val = ""
-                    
-                    if time_val or task_val:
-                        schedule_data.append({"DAY": current_day, "시간": time_val, "담당 업무": task_val})
-                        
-                df_schedule = pd.DataFrame(schedule_data)
-                st.subheader(f"✅ {selected_person} 선생님 일정")
-                days = df_schedule["DAY"].unique()
-                if len(days) > 0:
-                    day_tabs = st.tabs(list(days))
-                    for i, day in enumerate(days):
-                        with day_tabs[i]:
-                            day_df = df_schedule[df_schedule["DAY"] == day]
-                            st.dataframe(day_df[["시간", "담당 업무"]], hide_index=True, use_container_width=True)
 
         # =========================================================
         # TAB 2: 비상연락망
