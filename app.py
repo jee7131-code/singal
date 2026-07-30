@@ -5,14 +5,14 @@ import pandas as pd
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
-FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
+FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종)_3.xlsx'
 
-# 🛠️ 엑셀 즉시 반영을 위해 캐시(@st.cache_data) 구문 제거
+# 엑셀 즉시 반영을 위해 캐시 구문 제외
 def load_schedule_data():
     df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
     return df
 
-# 🛠️ 두 개의 비상연락망 시트를 각각 불러오도록 수정
+# 비상연락망 시트를 불러오고 학년 -> 이름 오름차순으로 정렬하는 함수
 def load_contacts_data():
     teacher_df = None
     student_df = None
@@ -24,6 +24,17 @@ def load_contacts_data():
         
     try:
         student_df = pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
+        
+        # 💡 [학생 명단 학년/이름 오름차순 정렬 적용]
+        if student_df is not None and not student_df.empty:
+            sort_cols = []
+            if '학년' in student_df.columns:
+                sort_cols.append('학년')
+            if '이름' in student_df.columns:
+                sort_cols.append('이름')
+            
+            if sort_cols:
+                student_df = student_df.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     except Exception:
         pass
         
@@ -43,15 +54,9 @@ try:
     header_row = df_raw.iloc[header_row_idx]
     people = [str(val).strip() for val in header_row.iloc[1:].dropna().values if str(val).strip()]
     
-    # ---------------------------------------------------------
-    # 🔧 [핵심 해결 로직] 세로 및 가로 병합 셀(NaN) 자동 채우기
-    # ---------------------------------------------------------
+    # 세로 및 가로 병합 셀(NaN) 자동 채우기
     df_body = df_raw.iloc[header_row_idx + 1:].copy()
-    
-    # 1. 세로 병합 채우기 (시간 열)
     df_body.iloc[:, 0] = df_body.iloc[:, 0].ffill() 
-    
-    # 2. 가로 병합 채우기 (사람 열 전체에 대해 왼쪽 값으로 오른쪽 빈칸 채우기)
     df_body.iloc[:, 1:] = df_body.iloc[:, 1:].ffill(axis=1)
     
     # 보기 모드 리스트
@@ -65,7 +70,6 @@ try:
         st.subheader("📋 비상연락망 안내")
         teacher_df, student_df = load_contacts_data()
         
-        # 탭을 만들어 교사/학생 연락망을 깔끔하게 분리
         tab1, tab2 = st.tabs(["👨‍🏫 교사 비상연락망", "🧑‍🎓 학생 비상연락망"])
         
         with tab1:
@@ -76,6 +80,7 @@ try:
                 
         with tab2:
             if student_df is not None and not student_df.empty:
+                st.caption("📌 학년별 ➔ 이름별 오름차순으로 자동 정렬되었습니다.")
                 search_query = st.text_input("🔍 학생 이름 또는 조 검색:", "")
                 filtered_df = student_df.copy()
                 if search_query:
