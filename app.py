@@ -5,26 +5,29 @@ import pandas as pd
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 st.title("📅 여름신앙학교 종합 안내")
 
-# 1. 변경된 파일 이름 적용
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
 
-@st.cache_data
+# 🛠️ 엑셀 즉시 반영을 위해 캐시(@st.cache_data) 구문 제거
 def load_schedule_data():
     df = pd.read_excel(FILE_PATH, sheet_name='타임테이블')
     return df
 
-@st.cache_data
-def load_student_data():
+# 🛠️ 두 개의 비상연락망 시트를 각각 불러오도록 수정
+def load_contacts_data():
+    teacher_df = None
+    student_df = None
+    
     try:
-        # 2. 추가하신 '비상연락망' 시트를 읽어오도록 적용
-        df_student = pd.read_excel(FILE_PATH, sheet_name='교사 비상연락망')
-        return df_student
+        teacher_df = pd.read_excel(FILE_PATH, sheet_name='교사 비상연락망')
     except Exception:
-        # 혹시 '학생명단'으로 저장하셨을 경우를 대비한 안전장치
-        try:
-            return pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
-        except Exception:
-            return None
+        pass
+        
+    try:
+        student_df = pd.read_excel(FILE_PATH, sheet_name='학생 비상연락망')
+    except Exception:
+        pass
+        
+    return teacher_df, student_df
 
 try:
     df_raw = load_schedule_data()
@@ -52,28 +55,37 @@ try:
     df_body.iloc[:, 1:] = df_body.iloc[:, 1:].ffill(axis=1)
     
     # 보기 모드 리스트
-    view_options = ["📋 비상연락망 (학생 인적사항)", "🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
+    view_options = ["📋 비상연락망 (교사/학생)", "🌟 전체 스케줄 보기", "🕒 특정 시간대 스케줄 보기", "🖨️ 인쇄용 스케줄 (A4 최적화)"] + people
     selected_option = st.selectbox("👀 무엇을 확인하시겠어요?", view_options)
     
     # ---------------------------------------------------------
-    # 0. 비상연락망 & 인적사항 보기
+    # 0. 비상연락망 보기 (교사 & 학생 탭 분리 적용)
     # ---------------------------------------------------------
-    if selected_option == "📋 비상연락망 (학생 인적사항)":
-        st.subheader("📋 비상연락망 및 인적사항")
-        df_students = load_student_data()
+    if selected_option == "📋 비상연락망 (교사/학생)":
+        st.subheader("📋 비상연락망 안내")
+        teacher_df, student_df = load_contacts_data()
         
-        if df_students is None or df_students.empty:
-            st.warning("⚠️ 엑셀 파일에 '비상연락망' 시트가 없거나 데이터가 비어 있습니다. 시트 이름을 확인해 주세요.")
-        else:
-            # 검색 기능
-            search_query = st.text_input("🔍 학생 이름 또는 조/내용 검색:", "")
-            filtered_df = df_students.copy()
-            if search_query:
-                mask = filtered_df.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
-                filtered_df = filtered_df[mask]
+        # 탭을 만들어 교사/학생 연락망을 깔끔하게 분리
+        tab1, tab2 = st.tabs(["👨‍🏫 교사 비상연락망", "🧑‍🎓 학생 비상연락망"])
+        
+        with tab1:
+            if teacher_df is not None and not teacher_df.empty:
+                st.dataframe(teacher_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("교사 비상연락망 데이터가 없거나 시트명을 확인해 주세요.")
                 
-            st.caption(f"총 {len(filtered_df)}건의 데이터가 조회되었습니다.")
-            st.dataframe(filtered_df, hide_index=True, use_container_width=True)
+        with tab2:
+            if student_df is not None and not student_df.empty:
+                search_query = st.text_input("🔍 학생 이름 또는 조 검색:", "")
+                filtered_df = student_df.copy()
+                if search_query:
+                    mask = filtered_df.astype(str).apply(lambda row: row.str.contains(search_query, case=False).any(), axis=1)
+                    filtered_df = filtered_df[mask]
+                    
+                st.caption(f"총 {len(filtered_df)}건의 데이터가 조회되었습니다.")
+                st.dataframe(filtered_df, hide_index=True, use_container_width=True)
+            else:
+                st.info("학생 비상연락망 데이터가 없거나 시트명을 확인해 주세요.")
 
     # ---------------------------------------------------------
     # 1. 인쇄용 스케줄 (다운로드 방식)
