@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime
-import pytz  # 한국 시각(KST) 적용을 위해 추가
+import pytz
+import re
 
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 
@@ -72,13 +73,21 @@ def load_contacts_data():
         
     return teacher_df, student_df
 
-# 🛠️ [핵심 수정] 한국 표준시(KST) 기준 실시간 자동 선택 로직
+# 🛠️ 시간 텍스트를 분 단위(0~1439분)로 변환하는 정밀 함수
+def parse_time_to_minutes(time_str):
+    time_str = str(time_str).strip()
+    match = re.search(r'(\d{1,2})\s*:\s*(\d{2})', time_str)
+    if match:
+        h, m = int(match.group(1)), int(match.group(2))
+        return h * 60 + m
+    return None
+
+# 🛠️ [정밀 수정] 한국 시각(KST) 및 분 단위 시각 정밀 매칭
 def get_current_day_and_time(available_days, time_data):
-    # 서버 위치와 상관없이 무조건 대한민국 시각(KST)으로 계산
     kst = pytz.timezone('Asia/Seoul')
     now = datetime.now(kst)
     today_str = now.strftime("%Y-%m-%d")
-    current_time_str = now.strftime("%H:%M")
+    current_minutes = now.hour * 60 + now.minute
     
     target_day = "DAY1"
     if "08-01" in today_str:
@@ -92,17 +101,14 @@ def get_current_day_and_time(available_days, time_data):
     selected_time = None
     if target_day in time_data:
         day_items = time_data[target_day]
+        
         for item in day_items:
-            t = item["time"]
-            # '09:00 - 10:00' 또는 '09:00' 형태에서 시작 시각 추출
-            t_start = t.split("-")[0].strip().split(" ")[0].strip()
-            # 1자리 시각(9:00 -> 09:00) 보정
-            if len(t_start) == 4 and t_start[1] == ':':
-                t_start = "0" + t_start
-                
-            if t_start <= current_time_str:
-                selected_time = t
-            else:
+            t_raw = item["time"]
+            t_min = parse_time_to_minutes(t_raw)
+            
+            if t_min is not None and t_min <= current_minutes:
+                selected_time = t_raw
+            elif t_min is not None and t_min > current_minutes:
                 break
                 
         if not selected_time and len(day_items) > 0:
@@ -149,7 +155,7 @@ try:
             ]
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
-            # 1-1. 현재 시간대 스케줄 (KST 실시간 적용)
+            # 1-1. 현재 시간대 스케줄 (분 단위 정밀 수식 매칭)
             if selected_schedule == "🕒 현재 시간대 스케줄 (실시간)":
                 time_data = {}
                 current_day = "DAY1"
@@ -191,7 +197,7 @@ try:
                     
                     st.divider()
                     st.markdown(f"### 📍 {selected_day} | {selected_time}")
-                    st.caption(f"💡 현재 한국 시각 기준 ({formatted_now}) 일정입니다.")
+                    st.caption(f"💡 현재 한국 시각 기준 ({formatted_now}) 진행 일정입니다.")
                     
                     for item in time_data[selected_day]:
                         if item["time"] == selected_time:
