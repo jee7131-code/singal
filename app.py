@@ -2,8 +2,8 @@ import streamlit as st
 import pandas as pd
 import openpyxl
 from datetime import datetime
+import pytz  # 한국 시각(KST) 적용을 위해 추가
 
-# 모바일 화면 최적화 설정
 st.set_page_config(page_title="2026 여름신앙학교 스케줄", page_icon="📅", layout="centered")
 
 FILE_PATH = '2026 여름신앙학교 데일리 스케줄(최종).xlsx'
@@ -20,7 +20,6 @@ def load_notice_data():
         pass
     return None, None
 
-# openpyxl을 이용한 병합 셀(Merged Cells) 해제 로직
 def load_excel_unmerged(file_path, sheet_name):
     try:
         wb = openpyxl.load_workbook(file_path, data_only=True)
@@ -73,15 +72,18 @@ def load_contacts_data():
         
     return teacher_df, student_df
 
+# 🛠️ [핵심 수정] 한국 표준시(KST) 기준 실시간 자동 선택 로직
 def get_current_day_and_time(available_days, time_data):
-    now = datetime.now()
+    # 서버 위치와 상관없이 무조건 대한민국 시각(KST)으로 계산
+    kst = pytz.timezone('Asia/Seoul')
+    now = datetime.now(kst)
     today_str = now.strftime("%Y-%m-%d")
     current_time_str = now.strftime("%H:%M")
     
     target_day = "DAY1"
-    if "2026-08-01" in today_str or "08-01" in today_str:
+    if "08-01" in today_str:
         target_day = "DAY2"
-    elif "2026-08-02" in today_str or "08-02" in today_str:
+    elif "08-02" in today_str:
         target_day = "DAY3"
         
     if target_day not in available_days and len(available_days) > 0:
@@ -92,17 +94,23 @@ def get_current_day_and_time(available_days, time_data):
         day_items = time_data[target_day]
         for item in day_items:
             t = item["time"]
-            t_short = t.split(" ")[0].replace("-", "").strip()
-            if t_short <= current_time_str:
+            # '09:00 - 10:00' 또는 '09:00' 형태에서 시작 시각 추출
+            t_start = t.split("-")[0].strip().split(" ")[0].strip()
+            # 1자리 시각(9:00 -> 09:00) 보정
+            if len(t_start) == 4 and t_start[1] == ':':
+                t_start = "0" + t_start
+                
+            if t_start <= current_time_str:
                 selected_time = t
             else:
                 break
+                
         if not selected_time and len(day_items) > 0:
             selected_time = day_items[0]["time"]
             
-    return target_day, selected_time
+    return target_day, selected_time, now.strftime("%Y년 %m월 %d일 %H시 %M분")
 
-# 상단 제목 및 공지 배너
+# 메인 제목 및 공지 배너
 st.title("📅 여름신앙학교 종합 안내")
 
 notice_title, notice_content = load_notice_data()
@@ -133,7 +141,6 @@ try:
         with main_tab1:
             st.subheader("🗓️ 일정표 확인")
             
-            # 💡 [드롭다운 메뉴를 핵심 4가지로 단축 정리]
             schedule_options = [
                 "🕒 현재 시간대 스케줄 (실시간)", 
                 "🔍 선생님/교사 이름 검색", 
@@ -142,7 +149,7 @@ try:
             ]
             selected_schedule = st.selectbox("👀 확인할 스케줄 항목을 선택하세요:", schedule_options, key="schedule_select")
             
-            # 1-1. 현재 시간대 스케줄 (실시간 자동 선택)
+            # 1-1. 현재 시간대 스케줄 (KST 실시간 적용)
             if selected_schedule == "🕒 현재 시간대 스케줄 (실시간)":
                 time_data = {}
                 current_day = "DAY1"
@@ -173,7 +180,7 @@ try:
                 days = list(time_data.keys())
                 
                 if days:
-                    auto_day, auto_time = get_current_day_and_time(days, time_data)
+                    auto_day, auto_time, formatted_now = get_current_day_and_time(days, time_data)
                     
                     day_idx = days.index(auto_day) if auto_day in days else 0
                     selected_day = st.selectbox("📅 날짜(DAY) 선택:", days, index=day_idx, key="time_day_select")
@@ -184,7 +191,7 @@ try:
                     
                     st.divider()
                     st.markdown(f"### 📍 {selected_day} | {selected_time}")
-                    st.caption("💡 접속 당시 시각에 맞춰 현재 진행 중인 일정이 자동 안내됩니다.")
+                    st.caption(f"💡 현재 한국 시각 기준 ({formatted_now}) 일정입니다.")
                     
                     for item in time_data[selected_day]:
                         if item["time"] == selected_time:
@@ -195,7 +202,7 @@ try:
                                     st.write(f"- **{person}**: (공란/휴식)")
                             break
 
-            # 1-2. 🔍 선생님/교사 이름 검색 기능
+            # 1-2. 선생님 이름 검색
             elif selected_schedule == "🔍 선생님/교사 이름 검색":
                 st.markdown("### 🔍 교사/봉사자 개인 일정 빠른 검색")
                 search_person = st.selectbox("선생님 이름을 선택하세요:", people, key="person_search_dropdown")
@@ -265,7 +272,7 @@ try:
                             day_df = df_all[df_all["DAY"] == day].drop(columns=["DAY"])
                             st.dataframe(day_df, hide_index=True, use_container_width=False)
 
-            # 1-4. 인쇄용 스케줄 (다운로드 방식)
+            # 1-4. 인쇄용 스케줄
             elif selected_schedule == "🖨️ 인쇄용 스케줄 (A4 최적화)":
                 st.success("웹사이트 화면 제약 없이 여러 장을 완벽하게 인쇄하려면 아래의 **[다운로드]** 버튼을 눌러 파일을 받아주세요!")
                 print_target = st.selectbox("출력할 대상:", ["전체 스케줄"] + people, key="print_target_select")
